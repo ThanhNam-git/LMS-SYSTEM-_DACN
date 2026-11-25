@@ -1,0 +1,85 @@
+[project]
+name = "lms-backend"
+version = "0.1.0"
+description = "Learning Management System built with Django + Cassandra"
+authors = [{ name = "hsminh" }]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "Django>=4.0,<6.0",
+    "cassandra-driver",
+    "python-decouple",
+    "django-cassandra-engine",
+    "djangorestframework",
+    "djangorestframework-simplejwt",
+    "django-filter",
+    "django-extensions",
+    "channels",
+    "daphne",
+    "django-cors-headers",
+    "boto3",
+    "qrcode",
+    "firebase-admin",
+    "requests",
+    "langchain",
+    "langchain-core",
+    "langchain-community",
+    "langchain-text-splitters",
+    "lancedb",
+    "pyarrow",
+    "numpy>=1.22",
+    "pypdf",
+    "google-auth (>=2.53.0,<3.0.0)",
+    "google-auth-oauthlib (>=1.4.0,<2.0.0)",
+    "insightface (>=1.0.1,<2.0.0)",
+    "typesense>=0.21.0",
+    "chromadb>=0.4.0",
+    "djangorestframework-stubs (>=3.17.0,<4.0.0)",
+    "django-rq (>=4.1,<5.0)",
+    "rq (>=2.8,<3.0)",
+    "redis (>=5.0,<6.0)",
+    "viparse[pdf,ocr] (>=0.1.5,<0.2.0)",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipython",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+django = ">=4.0,<6.0"
+cassandra-driver = "^3.30.0"
+python-decouple = "^3.8"
+django-cassandra-engine = "^1.10.0"
+djangorestframework = "^3.17.1"
+djangorestframework-simplejwt = "^5.5.1"
+django-filter = "^25.1"
+django-extensions = "^3.2.3"
+channels = "^4.3.2"
+daphne = "^4.2.1"
+django-cors-headers = "^4.9.0"
+boto3 = "^1.43.0"
+qrcode = "^8.2"
+firebase-admin = "^7.4.0"
+requests = "^2.32.0"
+langchain = "^0.3.30"
+langchain-core = "^0.3.86"
+langchain-community = "^0.3.31"
+langchain-text-splitters = "^0.3.11"
+lancedb = ">=0.4"
+pyarrow = ">=12.0"
+numpy = ">=1.22"
+pypdf = "^6.12.0"
+typesense = ">=0.21.0"
+chromadb = ">=0.4.0"
+django-rq = "^4.1"
+rq = "^2.8"
+redis = "^5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

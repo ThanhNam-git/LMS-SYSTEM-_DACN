@@ -1,0 +1,146 @@
+from collections import defaultdict
+from datetime import datetime
+from uuid import UUID
+
+from features.quiz.repositories.quiz_log_repository import QuizLogRepository
+from core.services.base_service import BaseService
+
+
+def _safe_uuid(val):
+    if val is None:
+        return None
+    if isinstance(val, UUID):
+        return val
+    try:
+        return UUID(str(val))
+    except (ValueError, TypeError):
+        return None
+
+
+def _hydrate_consumer(consumers, sid):
+    try:
+        c = consumers.find(sid)
+    except Exception:
+        c = None
+    if c is None:
+        return sid, ''
+    return (
+        getattr(c, 'full_name', '') or getattr(c, 'username', '') or sid,
+        getattr(c, 'avatar_url', '') or '',
+    )
+
+
+def _best_per_student(rows):
+    """Group log rows by student, keep the best attempt per the ranking rule."""
+    by_student = defaultdict(list)
+    for r in rows:
+        by_student[str(r.student_id)].append(r)
+
+    best = {}
+    for sid, attempts in by_student.items():
+        def keyfn(a):
+            return (
+                -int(getattr(a, 'score_pct', 0) or 0),
+                int(getattr(a, 'time_taken_seconds', 0) or 0),
+                getattr(a, 'submitted_at', datetime.max),
+            )
+        attempts_sorted = sorted(attempts, key=keyfn)
+        best[sid] = attempts_sorted[0]
+    return best
+
+
+class QuizLeaderboardService(BaseService):
+    def __init__(self):
+        self.log_repo = QuizLogRepository()
+
+    def _all_rows(self, quiz_id, classroom_id):
+        return list(self.log_repo.get_by_classroom(quiz_id, classroom_id))
+
+    def build(self, quiz_id, classroom_id, limit=20):
+        from features.account.consumer.repositories import ConsumerRepository
+
+        consumers = ConsumerRepository()
+        rows = self._all_rows(quiz_id, classroom_id)
+        best = _best_per_student(rows)
+
+        entries = []
+        for sid, a in best.items():
+            name, avatar = _hydrate_consumer(consumers, sid)
+            entries.append({
+                'student_id': sid,
+                'student_name': name,
+                'student_avatar': avatar,
+                'best_score_pct': int(getattr(a, 'score_pct', 0) or 0),
+                'best_score': int(getattr(a, 'score', 0) or 0),
+                'best_total_questions': int(getattr(a, 'total_questions', 0) or 0),
+                'best_time_taken_seconds': int(getattr(a, 'time_taken_seconds', 0) or 0),
+                'best_attempt_uid': str(getattr(a, 'uid', '')) if getattr(a, 'uid', None) else None,
+                'best_attempt_number': int(getattr(a, 'attempt_number', 1) or 1),
+                'best_submitted_at': getattr(a, 'submitted_at', None),
+                'attempts_count': self._count_attempts(rows, sid),
+            })
+
+        entries.sort(key=lambda e: (
+            -e['best_score_pct'],
+            e['best_time_taken_seconds'],
+            e['best_submitted_at'] or datetime.max,
+        ))
+        for i, e in enumerate(entries, start=1):
+            e['rank'] = i
+
+        total_students = len(entries)
+        my_entry = None
+
+        top3 = entries[:3]
+        sliced = entries[:max(1, int(limit))]
+
+        return {
+            'quiz_id': str(quiz_id),
+            'classroom_id': str(classroom_id),
+            'total_students': total_students,
+            'top_3': top3,
+            'entries': sliced,
+            'me': my_entry,
+        }
+
+    def student_detail(self, quiz_id, classroom_id, student_id):
+        from features.account.consumer.repositories import ConsumerRepository
+
+        consumers = ConsumerRepository()
+        sid = str(student_id)
+        rows = list(self.log_repo.get_by_student(quiz_id, classroom_id, sid))
+        name, avatar = _hydrate_consumer(consumers, sid)
+
+        if not rows:
+            return {
+                'student_id': sid,
+                'student_name': name,
+                'student_avatar': avatar,
+                'best_score_pct': 0,
+                'best_score': 0,
+                'best_total_questions': 0,
+                'best_time_taken_seconds': 0,
+                'best_attempt_uid': None,
+                'best_attempt_number': 0,
+                'best_submitted_at': None,
+                'attempts_count': 0,
+            }
+
+        best = _best_per_student(rows)[sid]
+
+        return {
+            'student_id': sid,
+            'student_name': name,
+            'student_avatar': avatar,
+            'best_score_pct': int(getattr(best, 'score_pct', 0) or 0),
+            'best_score': int(getattr(best, 'score', 0) or 0),
+            'best_total_questions': int(getattr(best, 'total_questions', 0) or 0),
+            'best_time_taken_seconds': int(getattr(best, 'time_taken_seconds', 0) or 0),
+            'best_attempt_uid': str(getattr(best, 'uid', '')) if getattr(best, 'uid', None) else None,
+            'best_attempt_number': int(getattr(best, 'attempt_number', 1) or 1),
+            'best_submitted_at': getattr(best, 'submitted_at', None),
+            'attempts_count': len(rows),
+        }
+
+    def _count_attempts(self, rows, sid):
+        return sum(1 for r in rows if str(r.student_id) == sid)

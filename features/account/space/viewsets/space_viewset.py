@@ -1,0 +1,166 @@
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+import os
+
+from core.views.api.base_viewset import BaseModelViewSet
+from core.views.mixins import SpaceScopeMixin
+from features.account.space.serializers import (
+    SpaceAccountSerializer,
+    SpaceAccountCreateSerializer,
+    SpaceAccountUpdateSerializer,
+    SpaceAccountProfileUpdateSerializer,
+    SpaceSettingsSerializer,
+    SpaceChangePasswordSerializer,
+)
+from features.account.space.services import SpaceService
+from features.account.space.repositories import SpaceRepository
+
+
+class SpaceViewSet(SpaceScopeMixin, BaseModelViewSet):
+    """
+    Space model view set
+    """
+    repository = SpaceRepository()
+    queryset = repository.all()
+    serializer_class = SpaceAccountSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def list(self, request, *args, **kwargs):
+        """
+        Listing spaces
+        """
+        service = SpaceService()
+        self.queryset = service.get_active_spaces()
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='me')
+    def me(self, request, *args, **kwargs):
+        """
+        Get current space profile
+        """
+        if not request.user or not request.user.is_authenticated:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+        service = SpaceService()
+        space = service.get_mine(request.user)
+        return Response(SpaceAccountSerializer(instance=space).data)
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mine')
+    def mine(self, request, *args, **kwargs):
+        """
+        Get or update current space profile
+        """
+        if request.method.lower() == 'get':
+            return self.me(request, *args, **kwargs)
+
+        serializer = SpaceAccountProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        service = SpaceService()
+        space = service.update_mine(request.user, serializer.validated_data)
+        return Response(SpaceAccountSerializer(instance=space).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='settings')
+    def get_settings(self, request, *args, **kwargs):
+        """
+        Get current space settings (profile, security, classroom defaults, notifications)
+        """
+        if not request.user or not request.user.is_authenticated:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        service = SpaceService()
+        return Response(service.get_settings(request.user))
+
+    @action(detail=False, methods=['patch'], url_path='settings')
+    def update_settings(self, request, *args, **kwargs):
+        """
+        Update current space settings (profile, security, classroom defaults, notifications)
+        """
+        if not request.user or not request.user.is_authenticated:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = SpaceSettingsSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        service = SpaceService()
+        updated = service.update_settings(request.user, serializer.validated_data)
+        return Response(updated, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='change-password')
+    def change_password(self, request, *args, **kwargs):
+        serializer = SpaceChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        service = SpaceService()
+        service.change_password(
+            request.user,
+            serializer.validated_data['current_password'],
+            serializer.validated_data['new_password'],
+        )
+        return Response({'detail': 'Password changed successfully.'}, status=status.HTTP_200_OK)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a space detail
+        """
+        instance = self.get_object()
+        serializer = SpaceAccountSerializer(instance=instance)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new space account
+        """
+        serializer = SpaceAccountCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        service = SpaceService()
+        # Note: SpaceService.register handles the logic
+        space = service.register(serializer.validated_data)
+
+        serialize_data = SpaceAccountSerializer(instance=space)
+        return Response(serialize_data.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Update a space
+        """
+        data = request.data.copy()
+        instance = self.get_object()
+        user_uid = str(instance.uid)
+
+        from core.storages.storage_service import storage_service
+
+        # Handle logo upload
+        if 'logo' in request.FILES:
+            logo_file = request.FILES['logo']
+            ext = os.path.splitext(logo_file.name)[1]
+            unique_filename = f"spaces/logos/{user_uid}{ext}"
+            res = storage_service.upload_fileobj(logo_file, unique_filename, is_public=True)
+            if res['success']:
+                data['logo_url'] = res['object_key']
+
+        # Handle cover upload
+        if 'cover' in request.FILES:
+            cover_file = request.FILES['cover']
+            ext = os.path.splitext(cover_file.name)[1]
+            unique_filename = f"spaces/covers/{user_uid}{ext}"
+            res = storage_service.upload_fileobj(cover_file, unique_filename, is_public=True)
+            if res['success']:
+                data['cover_url'] = res['object_key']
+
+        serializer = SpaceAccountUpdateSerializer(data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        service = SpaceService()
+        instance = service.update(instance, **serializer.validated_data)
+
+        serialize_data = SpaceAccountSerializer(instance=instance)
+        return Response(serialize_data.data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete a space
+        """
+        return super().destroy(request, *args, **kwargs)

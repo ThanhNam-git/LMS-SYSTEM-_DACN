@@ -1,0 +1,27 @@
+from cassandra.cqlengine import columns
+from core.models.cassandra import BaseTimeStampModel
+from core.utils.uuid import uuid7
+
+class Resource(BaseTimeStampModel):
+    uid = columns.UUID(primary_key=True, default=uuid7)
+
+    name = columns.Text(required=True)
+    file_type = columns.Text(required=True, index=True)  # video, jpg, pdf, etc.
+    url = columns.Text(required=True)
+    size = columns.BigInt()
+
+    owner_id = columns.UUID(index=True)
+    owner_type = columns.Text(index=True)
+
+    folder_id = columns.UUID(required=False)
+    order_index = columns.Integer(default=0)
+
+    metadata = columns.Map(
+        columns.Text(),
+        columns.Text(),
+    )
+
+    class Meta:
+        get_pk_field = 'uid'
+
+    __table_name__ = 'resource_resources'
